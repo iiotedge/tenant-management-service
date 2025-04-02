@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
 		<groupId>com.iotmining</groupId>
@@ -8,10 +8,9 @@
 		<version>0.0.1-SNAPSHOT</version>
 		<!--		<relativePath/> &lt;!&ndash; Ensure this is set &ndash;&gt;-->
 	</parent>
-
 	<artifactId>tenant-management-service</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>tenant-management-service</name>
+	<name>IoTMining - Tenant management service</name>
 	<description>Demo project for Spring Boot</description>
 	<url/>
 	<licenses>
@@ -48,6 +47,7 @@
 	</dependencies>
 
 	<build>
+		<finalName>${project.artifactId}</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -64,7 +64,15 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<goals>
+							<goal>repackage</goal>  <!-- Ensures an executable JAR -->
+						</goals>
+					</execution>
+				</executions>
 				<configuration>
+					<outputDirectory>${project.basedir}/../../out</outputDirectory>
 					<excludes>
 						<exclude>
 							<groupId>org.projectlombok</groupId>
