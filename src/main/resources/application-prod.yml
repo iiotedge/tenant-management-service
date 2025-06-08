@@ -1,0 +1,25 @@
+spring:
+  data:
+    cassandra:
+      contact-points: ${SPRING_CASSANDRA_CONTACT_POINTS:cassandra.default.svc.cluster.local}
+      port: ${SPRING_CASSANDRA_PORT:9042}
+      keyspace-name: ${SPRING_CASSANDRA_KEYSPACE:dms_data}
+      schema-action: ${SPRING_CASSANDRA_SCHEMA_ACTION:none}
+      local-datacenter: ${SPRING_CASSANDRA_LOCAL_DATACENTER:datacenter1}
+
+  flyway:
+    locations: classpath:db/migration
+    keyspace: iotmining
+    enabled: true
+    driver-class-name: org.flywaydb.database.cassandra.CassandraDriver
+    baseline-on-migrate: true
+    url: ${CASSANDRA_JDBC_URL:jdbc:cassandra://cassandra.iotmining.svc.cluster.local:9042/iotmining}
+    user: ${SPRING_CASSANDRA_USERNAME:cassandra}
+    password: ${SPRING_CASSANDRA_PASSWORD:cassandra}
+
+services:
+  dms:
+    url: ${DMS_URL:http://dms.iotmining.svc.cluster.local:8098}
+
+server:
+  port: ${SERVER_PORT:8083}
