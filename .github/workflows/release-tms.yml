@@ -20,7 +20,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Buildx with docker-container driver so GHA cache works
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
         with:
@@ -34,8 +33,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Only needed if your Maven build pulls from GitHub Packages (platform-build).
-      # Safe default: use GH_PACKAGES_TOKEN if provided, else fall back to GITHUB_TOKEN.
+      # Generate settings.xml for GitHub Packages using PAT
       - name: Create gpr-settings.xml (temp)
         env:
           GH_USERNAME: ${{ github.actor }}
@@ -100,7 +98,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Provide Maven settings into the build only if your Dockerfile uses it via BuildKit secrets
           secrets: |
             id=gpr,src=${{ env.GPR_SETTINGS }}
           build-args: |
