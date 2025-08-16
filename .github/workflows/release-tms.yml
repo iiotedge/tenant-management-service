@@ -33,7 +33,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Generate settings.xml for GitHub Packages using PAT
+      # Create settings.xml for GitHub Packages using PAT (GH_PACKAGES_TOKEN)
       - name: Create gpr-settings.xml (temp)
         env:
           GH_USERNAME: ${{ github.actor }}

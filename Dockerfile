@@ -8,31 +8,36 @@ WORKDIR /workspace
 
 ARG SKIP_TESTS=true
 
+# Copy POM first to warm cache
 COPY pom.xml ./
 
-# Warm dependencies & parent POM
+# Warm dependencies & fetch parent POM via GitHub Packages
 RUN --mount=type=cache,target=/root/.m2 \
     --mount=type=secret,id=gpr \
-    bash -lc '
-      SETTINGS_ARG="";
-      if [ -f /run/secrets/gpr ]; then
-        echo "[INFO] Using GitHub Packages settings at /run/secrets/gpr";
-        SETTINGS_ARG="-s /run/secrets/gpr";
-      else
-        echo "[WARN] No settings secret mounted. If parent POM is in GitHub Packages, this WILL 401.";
-      fi
-      mvn $SETTINGS_ARG -B -U -DskipTests dependency:go-offline
-    '
+    bash -lc <<'BASH'
+set -euo pipefail
+SETTINGS_ARG=""
+if [ -f /run/secrets/gpr ]; then
+  echo "[INFO] Using GitHub Packages settings at /run/secrets/gpr"
+  SETTINGS_ARG="-s /run/secrets/gpr"
+else
+  echo "[WARN] No Maven settings secret mounted. If parent POM is in GitHub Packages, this will 401."
+fi
+mvn $SETTINGS_ARG -B -U -DskipTests dependency:go-offline
+BASH
 
 # Build sources
 COPY src ./src
 RUN --mount=type=cache,target=/root/.m2 \
     --mount=type=secret,id=gpr \
-    bash -lc '
-      SETTINGS_ARG="";
-      if [ -f /run/secrets/gpr ]; then SETTINGS_ARG="-s /run/secrets/gpr"; fi
-      mvn $SETTINGS_ARG -B -DskipTests=${SKIP_TESTS} clean package
-    '
+    bash -lc <<'BASH'
+set -euo pipefail
+SETTINGS_ARG=""
+if [ -f /run/secrets/gpr ]; then
+  SETTINGS_ARG="-s /run/secrets/gpr"
+fi
+mvn $SETTINGS_ARG -B -DskipTests=${SKIP_TESTS} clean package
+BASH
 
 # =========
 # RUNTIME
