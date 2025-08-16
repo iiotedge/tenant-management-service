@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
-# =========
-# BUILDER
-# =========
+############################
+#          BUILDER         #
+############################
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 
@@ -31,9 +31,9 @@ RUN --mount=type=cache,target=/root/.m2 \
       if [ -f /run/secrets/gpr ]; then SETTINGS_ARG="-s /run/secrets/gpr"; fi; \
       mvn $SETTINGS_ARG -B -DskipTests=${SKIP_TESTS} clean package'
 
-# =========
-# RUNTIME
-# =========
+############################
+#          RUNTIME         #
+############################
 FROM gcr.io/distroless/java21-debian12:nonroot
 
 ARG VCS_REF=unknown
