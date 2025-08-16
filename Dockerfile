@@ -13,7 +13,12 @@ COPY pom.xml ./
 RUN --mount=type=cache,target=/root/.m2 \
     --mount=type=secret,id=gpr,target=/tmp/settings.xml,required=false \
     bash -lc 'SETTINGS_ARG=""; \
-      if [ -f /tmp/settings.xml ]; then SETTINGS_ARG="-s /tmp/settings.xml"; fi; \
+      if [ -f /tmp/settings.xml ]; then \
+        echo "[INFO] Using GitHub Packages settings at /tmp/settings.xml"; \
+        SETTINGS_ARG="-s /tmp/settings.xml"; \
+      else \
+        echo "[WARN] No settings.xml secret mounted. If parent POM is in GitHub Packages, build will fail with 401."; \
+      fi; \
       mvn $SETTINGS_ARG -B -U -DskipTests dependency:go-offline'
 
 # Build sources
