@@ -9,11 +9,12 @@ WORKDIR /app
 COPY . .
 
 # Mount GitHub Packages settings.xml secret and use it
+ARG MAVEN_SETTINGS=default-settings.xml
+COPY ${MAVEN_SETTINGS} /root/.m2/settings.xml
+
 RUN --mount=type=cache,target=/root/.m2 \
-    --mount=type=secret,id=gpr \
-    mkdir -p /root/.m2 && \
-    cp /run/secrets/gpr /root/.m2/settings.xml && \
     mvn -s /root/.m2/settings.xml -B clean package -DskipTests=${SKIP_TESTS}
+
 
 # ---- Runtime stage ----
 FROM eclipse-temurin:21-jre
