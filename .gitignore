@@ -34,4 +34,4 @@ build/
 
 ### IoT Mining ###
 out/
-gpr-settings.xml
+./gpr-settings.xml
