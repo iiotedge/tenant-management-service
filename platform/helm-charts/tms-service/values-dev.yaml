@@ -1,0 +1,3 @@
+ingress:
+  host: tms.dev.iotmining.local
+replicaCount: 2

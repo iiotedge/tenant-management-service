@@ -1,0 +1,30 @@
+image:
+  repository: ghcr.io/iotmining/tms-service
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+resources:
+  requests: { cpu: "250m", memory: "512Mi" }
+  limits:   { cpu: "1",    memory: "1Gi" }
+
+service:
+  type: ClusterIP
+  port: 8080
+
+env:
+  SPRING_PROFILES_ACTIVE: "k8s"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: tms.dev.iotmining.local
+  path: /
+  tlsSecret: tms-tls
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75

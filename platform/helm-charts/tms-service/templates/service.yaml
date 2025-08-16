@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "tms-service.fullname" . }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app: {{ include "tms-service.name" . }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: 8080

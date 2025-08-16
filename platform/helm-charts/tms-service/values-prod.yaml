@@ -1,0 +1,8 @@
+ingress:
+  host: tms.iotmining.com
+replicaCount: 4
+autoscaling:
+  enabled: true
+  minReplicas: 4
+  maxReplicas: 12
+  targetCPUUtilizationPercentage: 70

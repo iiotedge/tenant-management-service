@@ -1,0 +1,17 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "tms-service.fullname" . }}-migrate
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: flyway
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          envFrom:
+            - secretRef: { name: tms-secrets }
+          command: ["java","-jar","/opt/app/app.jar","--spring.profiles.active=k8s","--spring.flyway.enabled=true","--spring.main.web-application-type=none"]
