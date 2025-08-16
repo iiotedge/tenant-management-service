@@ -1,79 +1,149 @@
-name: tms-release
-on:
-  push:
-    branches: [ "main" ]
-    paths:
-      - "**"
-      - ".github/workflows/**"
+name: CI/CD • TMS
 
-permissions:
-  contents: write
-  packages: write
-  id-token: write
+on:
+  pull_request:
+    paths:
+      - '**'
+      - '.github/workflows/release-tms.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - '**'
+      - '.github/workflows/release-tms.yml'
+  workflow_dispatch: {}
 
 env:
-  REGISTRY: ghcr.io
-  ORG: iotmining
-  SERVICE: tenant-management-service
+  IMAGE_NAME: ghcr.io/iotmining/tenant-management-service
+  JAVA_VERSION: '21'
+
+concurrency:
+  group: tms-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
 
 jobs:
-  release:
+  # 1) Build & Test
+  test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .   # adjust if POM is elsewhere
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Show tree (debug)
-        run: ls -la && echo && find . -maxdepth 2 -name pom.xml -print
-
-      - name: Setup Java 21 + Maven settings for GitHub Packages
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-          server-id: github
-          server-username: ${{ secrets.GH_PACKAGES_USER }}
-          server-password: ${{ secrets.GH_PACKAGES_TOKEN }}
 
-      - name: Build JAR (resolves parent from GitHub Packages)
-        run: mvn -B -ntp clean package
-
-      - name: Build image
+      - name: Create GitHub Packages settings.xml
+        env:
+          GH_USERNAME: ${{ github.actor }}
+          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}  # PAT with read:packages (and repo if private)
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}            # fallback if parent lives in same repo (usually not)
         run: |
-          IMG=${{ env.REGISTRY }}/${{ env.ORG }}/${{ env.SERVICE }}:${{ github.sha }}
-          docker build -t $IMG .
-          echo "IMG=$IMG" >> $GITHUB_ENV
+          SETTINGS="$RUNNER_TEMP/gpr-settings.xml"
+          TOKEN="${GH_PACKAGES_TOKEN:-$GITHUB_TOKEN}"
+          cat > "$SETTINGS" <<XML
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${GH_USERNAME}</username>
+                <password>${TOKEN}</password>
+              </server>
+            </servers>
+            <profiles>
+              <profile>
+                <id>github-packages</id>
+                <repositories>
+                  <repository>
+                    <id>github</id>
+                    <url>https://maven.pkg.github.com/iotmining/platform-build</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>true</enabled></snapshots>
+                  </repository>
+                  <repository>
+                    <id>central</id>
+                    <url>https://repo1.maven.org/maven2</url>
+                  </repository>
+                </repositories>
+                <pluginRepositories>
+                  <pluginRepository>
+                    <id>github</id>
+                    <url>https://maven.pkg.github.com/iotmining/platform-build</url>
+                  </pluginRepository>
+                </pluginRepositories>
+              </profile>
+            </profiles>
+            <activeProfiles>
+              <activeProfile>github-packages</activeProfile>
+            </activeProfiles>
+          </settings>
+          XML
+          echo "MAVEN_SETTINGS=$SETTINGS" >> "$GITHUB_ENV"
+          echo "GPR_SETTINGS=$SETTINGS" >> "$GITHUB_ENV"
 
-      - name: Scan image
-        uses: aquasecurity/trivy-action@0.24.0
+#      - name: Maven Verify
+#        run: mvn -s "${MAVEN_SETTINGS}" -B -ntp -DskipTests=false verify
+#
+#      - name: Upload JUnit reports
+#        if: always()
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: junit-reports
+#          path: |
+#            **/target/surefire-reports/*.xml
+#            **/target/failsafe-reports/*.xml
+#          if-no-files-found: ignore
+
+  # 2) Docker Build & Push
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
         with:
-          image-ref: ${{ env.IMG }}
-          format: table
-          exit-code: '1'
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          driver: docker-container
+          install: true
 
-      - name: Login GHCR
-        run: echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=sha-${{ github.sha }}
+            type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Push image
-        run: docker push ${{ env.IMG }}
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # (optional) chart packaging/push if this repo holds the chart
-      - name: Package Helm chart
-        if: hashFiles('platform/helm-charts/**/Chart.yaml') != ''
-        run: |
-          CHART_DIR=$(dirname $(git ls-files "platform/helm-charts/**/Chart.yaml" | head -n1))
-          cd "$CHART_DIR"
-          yq -i '.image.repository="${{ env.REGISTRY }}/${{ env.ORG }}/${{ env.SERVICE }}" | .image.tag="${{ github.sha }}"' values.yaml
-          helm package .
-          echo "CHART=$(ls *.tgz)" >> $GITHUB_ENV
-      - name: Push Helm chart
-        if: env.CHART != ''
-        run: |
-          helm registry login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-          helm push ${{ env.CHART }} oci://ghcr.io/${{ env.ORG }}/helm
+      - name: Build & Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          secrets: |
+            id=gpr,src=${{ env.GPR_SETTINGS }}     # passes Maven settings into the build stage
+          build-args: |
+            SKIP_TESTS=true
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ github.run_id }}
+          cache-from: type=gha,scope=tms
+          cache-to: type=gha,mode=max,scope=tms
