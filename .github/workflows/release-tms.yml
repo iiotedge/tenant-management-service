@@ -1,7 +1,12 @@
-name: Build & Release TMS Image
+name: CI/CD • TMS
 
 on:
+  pull_request:
+    paths:
+      - '**'
+      - '.github/workflows/release-tms.yml'
   push:
+    branches: [ main ]
     paths:
       - '**'
       - '.github/workflows/release-tms.yml'
@@ -9,34 +14,37 @@ on:
 
 env:
   IMAGE_NAME: ghcr.io/iotmining/tenant-management-service
+  JAVA_VERSION: '21'
+  # Set this to 'true' as a Repository Variable if you really need GH Packages during Maven builds
+  NEEDS_GPR_SETTINGS: 'false'
+
+concurrency:
+  group: tms-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write   # for SARIF uploads (Trivy)
 
 jobs:
-  docker:
+  ## 1) Build & Test (Maven)
+  test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Buildx with docker-container driver so GHA cache works
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
-          driver: docker-container
-          install: true
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Only needed if your Maven build pulls from GitHub Packages (platform-build).
-      # Safe default: use GH_PACKAGES_TOKEN if provided, else fall back to GITHUB_TOKEN.
-      - name: Create gpr-settings.xml (temp)
+      # Optional: create temporary GH Packages settings if you truly need it
+      - name: (Optional) Create gpr-settings.xml
+        if: ${{ env.NEEDS_GPR_SETTINGS == 'true' }}
         env:
           GH_USERNAME: ${{ github.actor }}
           GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
@@ -66,14 +74,6 @@ jobs:
                     <snapshots><enabled>true</enabled></snapshots>
                   </repository>
                 </repositories>
-                <pluginRepositories>
-                  <pluginRepository>
-                    <id>github-plugins</id>
-                    <url>https://maven.pkg.github.com/iotmining/platform-build</url>
-                    <releases><enabled>true</enabled></releases>
-                    <snapshots><enabled>true</enabled></snapshots>
-                  </pluginRepository>
-                </pluginRepositories>
               </profile>
             </profiles>
             <activeProfiles>
@@ -81,31 +81,271 @@ jobs:
             </activeProfiles>
           </settings>
           XML
-          echo "GPR_SETTINGS=$SETTINGS" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS_SETTINGS=--settings $SETTINGS" >> "$GITHUB_ENV"
 
-      - name: Extract metadata (tags, labels)
+      - name: Maven Verify (with tests)
+        run: |
+          mvn -B -ntp ${{ env.MAVEN_OPTS_SETTINGS }} -DskipTests=false verify
+
+      - name: Upload JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-reports
+          path: |
+            **/target/surefire-reports/*.xml
+            **/target/failsafe-reports/*.xml
+          if-no-files-found: ignore
+
+      # Optional: upload coverage report if you use JaCoCo
+      - name: Upload JaCoCo report (optional)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: |
+            **/target/site/jacoco/*
+          if-no-files-found: ignore
+
+      # Trivy filesystem scan (dependencies, secrets) -> SARIF to code scanning
+      - name: Run Trivy FS scan (SARIF)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: 'fs'
+          format: 'sarif'
+          output: 'trivy-fs.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+          ignore-unfixed: true
+          skip-dirs: |
+            .git
+            target
+            node_modules
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+
+  ## 2) Build container, scan it, and push (on main)
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for future multi-arch; safe to keep)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx (docker-container driver)
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+          install: true
+
+      - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=sha
+            type=raw,value=sha-${{ github.sha }}
+            type=raw,value=pr-${{ github.event.pull_request.number }}-sha-${{ github.sha }},enable={{is_pr}}
             type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Build & push
+      - name: Log in to GHCR (push only on main)
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build for PRs (no push, load image locally to scan)
+      - name: Build (PR) — no push, local load for scan
+        if: ${{ github.event_name == 'pull_request' }}
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: true
+          platforms: linux/amd64
+          push: false
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Provide Maven settings into the build only if your Dockerfile uses it via BuildKit secrets
-          secrets: |
-            id=gpr,src=${{ env.GPR_SETTINGS }}
           build-args: |
             SKIP_TESTS=true
             VCS_REF=${{ github.sha }}
             BUILD_DATE=${{ github.run_id }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=tms
+          cache-to: type=gha,mode=max,scope=tms
+          provenance: false
+          sbom: false
+
+      # Build & push on main (+ SBOM & provenance)
+      - name: Build & Push (main)
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SKIP_TESTS=true
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ github.run_id }}
+          cache-from: type=gha,scope=tms
+          cache-to: type=gha,mode=max,scope=tms
+          provenance: mode=max
+          sbom: true
+
+      # Trivy scan of the built image:
+      #   - On PRs: scan local image tag (loaded above)
+      #   - On main: scan GHCR-pushed tag
+      - name: Trivy Image Scan (PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          exit-code: '1'          # fail PR if HIGH/CRITICAL found
+      - name: Trivy Image Scan (main)
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          exit-code: '1'          # fail main if HIGH/CRITICAL found
+
+      # Upload SBOM artifact (main)
+      - name: Upload SBOM artifact
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: |
+            ./sbom-*.spdx
+          if-no-files-found: ignore
+
+#name: Build & Release TMS Image
+#
+#on:
+#  push:
+#    paths:
+#      - '**'
+#      - '.github/workflows/release-tms.yml'
+#  workflow_dispatch: {}
+#
+#env:
+#  IMAGE_NAME: ghcr.io/iotmining/tenant-management-service
+#
+#jobs:
+#  docker:
+#    runs-on: ubuntu-latest
+#    permissions:
+#      contents: read
+#      packages: write
+#
+#    steps:
+#      - uses: actions/checkout@v4
+#
+#      # Buildx with docker-container driver so GHA cache works
+#      - name: Set up Buildx
+#        uses: docker/setup-buildx-action@v3
+#        with:
+#          driver: docker-container
+#          install: true
+#
+#      - name: Log in to GHCR
+#        uses: docker/login-action@v3
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#
+#      # Only needed if your Maven build pulls from GitHub Packages (platform-build).
+#      # Safe default: use GH_PACKAGES_TOKEN if provided, else fall back to GITHUB_TOKEN.
+#      - name: Create gpr-settings.xml (temp)
+#        env:
+#          GH_USERNAME: ${{ github.actor }}
+#          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#        run: |
+#          SETTINGS="$RUNNER_TEMP/gpr-settings.xml"
+#          TOKEN="${GH_PACKAGES_TOKEN:-$GITHUB_TOKEN}"
+#          cat > "$SETTINGS" <<XML
+#          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+#                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+#                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+#            <servers>
+#              <server>
+#                <id>github</id>
+#                <username>${GH_USERNAME}</username>
+#                <password>${TOKEN}</password>
+#              </server>
+#            </servers>
+#            <profiles>
+#              <profile>
+#                <id>github-packages</id>
+#                <repositories>
+#                  <repository>
+#                    <id>github</id>
+#                    <url>https://maven.pkg.github.com/iotmining/platform-build</url>
+#                    <releases><enabled>true</enabled></releases>
+#                    <snapshots><enabled>true</enabled></snapshots>
+#                  </repository>
+#                </repositories>
+#                <pluginRepositories>
+#                  <pluginRepository>
+#                    <id>github-plugins</id>
+#                    <url>https://maven.pkg.github.com/iotmining/platform-build</url>
+#                    <releases><enabled>true</enabled></releases>
+#                    <snapshots><enabled>true</enabled></snapshots>
+#                  </pluginRepository>
+#                </pluginRepositories>
+#              </profile>
+#            </profiles>
+#            <activeProfiles>
+#              <activeProfile>github-packages</activeProfile>
+#            </activeProfiles>
+#          </settings>
+#          XML
+#          echo "GPR_SETTINGS=$SETTINGS" >> "$GITHUB_ENV"
+#
+#      - name: Extract metadata (tags, labels)
+#        id: meta
+#        uses: docker/metadata-action@v5
+#        with:
+#          images: ${{ env.IMAGE_NAME }}
+#          tags: |
+#            type=sha
+#            type=raw,value=latest,enable={{is_default_branch}}
+#
+#      - name: Build & push
+#        uses: docker/build-push-action@v6
+#        with:
+#          context: .
+#          file: ./Dockerfile
+#          push: true
+#          tags: ${{ steps.meta.outputs.tags }}
+#          labels: ${{ steps.meta.outputs.labels }}
+#          # Provide Maven settings into the build only if your Dockerfile uses it via BuildKit secrets
+#          secrets: |
+#            id=gpr,src=${{ env.GPR_SETTINGS }}
+#          build-args: |
+#            SKIP_TESTS=true
+#            VCS_REF=${{ github.sha }}
+#            BUILD_DATE=${{ github.run_id }}
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
