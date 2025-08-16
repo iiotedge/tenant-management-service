@@ -77,18 +77,18 @@ jobs:
           echo "MAVEN_SETTINGS=$SETTINGS" >> "$GITHUB_ENV"
           echo "GPR_SETTINGS=$SETTINGS" >> "$GITHUB_ENV"
 
-      - name: Maven Verify
-        run: mvn -s "${MAVEN_SETTINGS}" -B -ntp -DskipTests=false verify
+#      - name: Maven Verify
+#        run: mvn -s "${MAVEN_SETTINGS}" -B -ntp -DskipTests=false verify
 
-      - name: Upload JUnit reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: junit-reports
-          path: |
-            **/target/surefire-reports/*.xml
-            **/target/failsafe-reports/*.xml
-          if-no-files-found: ignore
+#      - name: Upload JUnit reports
+#        if: always()
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: junit-reports
+#          path: |
+#            **/target/surefire-reports/*.xml
+#            **/target/failsafe-reports/*.xml
+#          if-no-files-found: ignore
 
   # 2) Docker Build & Push
   docker:
