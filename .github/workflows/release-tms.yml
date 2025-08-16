@@ -26,7 +26,6 @@ permissions:
   security-events: write
 
 jobs:
-
   build-and-push:
     runs-on: ubuntu-latest
 
