@@ -14,32 +14,32 @@ permissions:
 env:
   REGISTRY: ghcr.io
   ORG: iotmining
-  SERVICE: tenant-management-service   # image name for single-service repo
+  SERVICE: tenant-management-service
 
 jobs:
   release:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: .   # POM is at repo root
+        working-directory: .   # adjust if POM is elsewhere
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Print tree
-        run: ls -la && echo && find . -maxdepth 2 -type f -name "pom.xml" -print
+      - name: Show tree (debug)
+        run: ls -la && echo && find . -maxdepth 2 -name pom.xml -print
 
-      - name: Setup Java 21 with GitHub Packages auth
+      - name: Setup Java 21 + Maven settings for GitHub Packages
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
           cache: maven
           server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
+          server-username: ${{ secrets.GH_PACKAGES_USER }}
+          server-password: ${{ secrets.GH_PACKAGES_TOKEN }}
 
-      - name: Build JAR
+      - name: Build JAR (resolves parent from GitHub Packages)
         run: mvn -B -ntp clean package
 
       - name: Build image
@@ -48,7 +48,7 @@ jobs:
           docker build -t $IMG .
           echo "IMG=$IMG" >> $GITHUB_ENV
 
-      - name: Scan image (Trivy)
+      - name: Scan image
         uses: aquasecurity/trivy-action@0.24.0
         with:
           image-ref: ${{ env.IMG }}
@@ -63,25 +63,17 @@ jobs:
       - name: Push image
         run: docker push ${{ env.IMG }}
 
-      # Package & Push Helm chart (if this repo holds the chart)
-      - name: Package Helm chart (optional)
+      # (optional) chart packaging/push if this repo holds the chart
+      - name: Package Helm chart
         if: hashFiles('platform/helm-charts/**/Chart.yaml') != ''
         run: |
           CHART_DIR=$(dirname $(git ls-files "platform/helm-charts/**/Chart.yaml" | head -n1))
           cd "$CHART_DIR"
-          # inject image repo/tag into values.yaml
           yq -i '.image.repository="${{ env.REGISTRY }}/${{ env.ORG }}/${{ env.SERVICE }}" | .image.tag="${{ github.sha }}"' values.yaml
           helm package .
           echo "CHART=$(ls *.tgz)" >> $GITHUB_ENV
-
-      - name: Push Helm chart to OCI (optional)
+      - name: Push Helm chart
         if: env.CHART != ''
         run: |
           helm registry login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
           helm push ${{ env.CHART }} oci://ghcr.io/${{ env.ORG }}/helm
-
-      - name: Tag release
-        run: |
-          ver=$(date +'%Y.%m.%d')-${{ github.run_number }}
-          git tag "${{ env.SERVICE }}-${ver}"
-          git push origin "${{ env.SERVICE }}-${ver}"

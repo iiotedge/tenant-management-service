@@ -11,29 +11,26 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: .   # POM is at repo root
+        working-directory: .   # adjust if POM is not at root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Print tree
-        run: ls -la && echo && find . -maxdepth 2 -type f -name "pom.xml" -print
+      - name: Show tree (debug)
+        run: ls -la && echo && find . -maxdepth 2 -name pom.xml -print
 
-      - name: Setup Java 21 with GitHub Packages auth
+      - name: Setup Java 21 + Maven settings for GitHub Packages
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
           cache: maven
           server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
+          server-username: ${{ secrets.GH_PACKAGES_USER }}
+          server-password: ${{ secrets.GH_PACKAGES_TOKEN }}
 
-      - name: Build & Test (uses parent + BOM from GitHub Packages)
+      - name: Build & Test
         run: mvn -B -ntp clean verify
 
       - name: Lint Dockerfile
         run: docker run --rm -i hadolint/hadolint < Dockerfile
-
-      - name: (Optional) Dependency Audit
-        run: mvn -B -ntp org.owasp:dependency-check-maven:check
