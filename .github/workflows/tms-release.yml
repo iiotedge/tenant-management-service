@@ -1,4 +1,4 @@
-name: CI/CD • TMS
+name: CI/CD • TMS _ 2
 
 on:
   pull_request:
