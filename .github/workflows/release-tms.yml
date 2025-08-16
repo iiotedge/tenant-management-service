@@ -1,0 +1,104 @@
+name: Build & Release TMS Image
+
+on:
+  push:
+    paths:
+      - 'microservices/tenant-management-service/**'
+      - '.github/workflows/release-tms.yml'
+  workflow_dispatch: {}
+
+env:
+  IMAGE_NAME: ghcr.io/iotmining/tenant-management-service
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write         # push to GHCR
+    defaults:
+      run:
+        working-directory: microservices/tenant-management-service
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create gpr-settings.xml (temp)
+        # Prefer a PAT with read:packages (+ repo if private)
+        # If your org allows GITHUB_TOKEN to read packages, you can use that instead.
+        env:
+          GH_USERNAME: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          SETTINGS="$RUNNER_TEMP/gpr-settings.xml"
+          cat > "$SETTINGS" <<XML
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${GH_USERNAME}</username>
+                <password>${GH_TOKEN}</password>
+              </server>
+            </servers>
+            <profiles>
+              <profile>
+                <id>github-packages</id>
+                <repositories>
+                  <repository>
+                    <id>github</id>
+                    <url>https://maven.pkg.github.com/iotmining/platform-build</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>true</enabled></snapshots>
+                  </repository>
+                </repositories>
+                <pluginRepositories>
+                  <pluginRepository>
+                    <id>github-plugins</id>
+                    <url>https://maven.pkg.github.com/iotmining/platform-build</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>true</enabled></snapshots>
+                  </pluginRepository>
+                </pluginRepositories>
+              </profile>
+            </profiles>
+            <activeProfiles>
+              <activeProfile>github-packages</activeProfile>
+            </activeProfiles>
+          </settings>
+          XML
+          echo "GPR_SETTINGS=$SETTINGS" >> "$GITHUB_ENV"
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & push (with secret + cache)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./microservices/tenant-management-service
+          file: ./microservices/tenant-management-service/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          secrets: |
+            id=gpr,src=${{ env.GPR_SETTINGS }}
+          build-args: |
+            SKIP_TESTS=true
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_id }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

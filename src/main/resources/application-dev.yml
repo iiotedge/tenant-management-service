@@ -1,22 +1,46 @@
 spring:
+  application:
+    name: dashboard-management-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/iotmining
+    username: postgres
+    password: 8506
+    hikari:
+      pool-name: LoginServicePool
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 30000
+      connection-timeout: 2000
+      max-lifetime: 1800000
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    database: postgresql
   flyway:
-    locations: classpath:db/migration
-    keyspace: iotmining
-    enabled: true
-    driver-class-name: org.flywaydb.database.cassandra.CassandraDriver
-    baseline-on-migrate: true
-    url: jdbc:cassandra://localhost:9042/iotmining
-    user: cassandra # If your Cassandra has authentication
-    password: cassandra # If your Cassandra has authentication
+    enabled: false
 
-  cassandra:
-    contact-points: 127.0.0.1
-    port: 9042
-    keyspace-name: iotmining
-    schema-action: none # CREATE_IF_NOT_EXISTS
-#    username: cassandra
-#    password: cassandra
-    local-datacenter: datacenter1
+cors:
+  allowed-origins: ${ALLOWED_CORS_ORIGINS:http://localhost:3000}
+#spring:
+#  flyway:
+#    locations: classpath:db/migration
+#    keyspace: iotmining
+#    enabled: true
+#    driver-class-name: org.flywaydb.database.cassandra.CassandraDriver
+#    baseline-on-migrate: true
+#    url: jdbc:cassandra://localhost:9042/iotmining
+#    user: cassandra # If your Cassandra has authentication
+#    password: cassandra # If your Cassandra has authentication
+#
+#  cassandra:
+#    contact-points: 127.0.0.1
+#    port: 9042
+#    keyspace-name: iotmining
+#    schema-action: none # CREATE_IF_NOT_EXISTS
+##    username: cassandra
+##    password: cassandra
+#    local-datacenter: datacenter1
 
 services:
   dms:
@@ -25,13 +49,13 @@ server:
   port: 8083
 
 
-
-flyway:
-  locations: classpath:db/migration
-  keyspace: iotmining
-  enabled: true
-  driver-class-name: org.flywaydb.database.cassandra.CassandraDriver
-  baseline-on-migrate: true
-  url: jdbc:cassandra://localhost:9042/iotmining
-  user: cassandra # If your Cassandra has authentication
-  password: cassandra # If your Cassandra has authentication
+#
+#flyway:
+#  locations: classpath:db/migration
+#  keyspace: iotmining
+#  enabled: true
+#  driver-class-name: org.flywaydb.database.cassandra.CassandraDriver
+#  baseline-on-migrate: true
+#  url: jdbc:cassandra://localhost:9042/iotmining
+#  user: cassandra # If your Cassandra has authentication
+#  password: cassandra # If your Cassandra has authentication

@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  tms:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SKIP_TESTS: "true"
+        VCS_REF: "${VCS_REF:-local}"
+        BUILD_DATE: "${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+      # Just reference the secret by name here
+      secrets:
+        - gpr
+    image: ghcr.io/iotmining/tenant-management-service:local
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+    ports:
+      - "8090:8090"
+
+# Define the secret source file here
+secrets:
+  gpr:
+    file: ./gpr-settings.xml

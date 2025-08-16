@@ -1,25 +1,46 @@
 spring:
-  data:
-    cassandra:
-      contact-points: ${SPRING_CASSANDRA_CONTACT_POINTS:cassandra.default.svc.cluster.local}
-      port: ${SPRING_CASSANDRA_PORT:9042}
-      keyspace-name: ${SPRING_CASSANDRA_KEYSPACE:dms_data}
-      schema-action: ${SPRING_CASSANDRA_SCHEMA_ACTION:none}
-      local-datacenter: ${SPRING_CASSANDRA_LOCAL_DATACENTER:datacenter1}
-
+  application:
+    name: tenant-management-service
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${DB1_URL}
+    username: ${DB1_USERNAME}
+    password: ${DB1_PASSWORD}
+    hikari:
+      pool-name: TenantProdServicePool
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 30000
+      connection-timeout: 30000
+      max-lifetime: 1800000
+  jpa:
+    hibernate:
+      ddl-auto: update   # ⚠️ In production, consider "validate"
+    database: postgresql
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
   flyway:
-    locations: classpath:db/migration
-    keyspace: iotmining
     enabled: true
-    driver-class-name: org.flywaydb.database.cassandra.CassandraDriver
-    baseline-on-migrate: true
-    url: ${CASSANDRA_JDBC_URL:jdbc:cassandra://cassandra.iotmining.svc.cluster.local:9042/iotmining}
-    user: ${SPRING_CASSANDRA_USERNAME:cassandra}
-    password: ${SPRING_CASSANDRA_PASSWORD:cassandra}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka-service:9092}
+  redis:
+    host: ${REDIS_HOST:redis}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: ${REDIS_TIMEOUT:2000}
+    pool:
+      max-active: ${REDIS_POOL_MAX_ACTIVE:10}
+      max-idle: ${REDIS_POOL_MAX_IDLE:5}
+      min-idle: ${REDIS_POOL_MIN_IDLE:1}
+      max-wait: ${REDIS_POOL_MAX_WAIT:2000}
 
-services:
-  dms:
-    url: ${DMS_URL:http://dms.iotmining.svc.cluster.local:8098}
+rate:
+  limit:
+    max-requests: ${RATE_LIMIT_MAX_REQUESTS:50}
+    time-window-seconds: ${RATE_LIMIT_TIME_WINDOW:60}
+    error-message: ${RATE_LIMIT_ERROR_MESSAGE:Too many requests. Please try again later.}
 
-server:
-  port: ${SERVER_PORT:8083}
+cors:
+  allowed-origins: ${ALLOWED_CORS_ORIGINS:https://your-frontend.example.com}
+
+jwt:
+  secret: ${JWT_SECRET_KEY_BASE64}
