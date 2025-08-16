@@ -3,7 +3,7 @@ name: Build & Release TMS Image
 on:
   push:
     paths:
-      - '**'                         # or narrow down as needed
+      - '**'
       - '.github/workflows/release-tms.yml'
   workflow_dispatch: {}
 
@@ -20,6 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Buildx with docker-container driver so GHA cache works
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+          install: true
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -27,12 +34,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Only needed if your Maven build pulls from GitHub Packages (platform-build).
+      # Safe default: use GH_PACKAGES_TOKEN if provided, else fall back to GITHUB_TOKEN.
       - name: Create gpr-settings.xml (temp)
         env:
           GH_USERNAME: ${{ github.actor }}
-          GH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN != '' && secrets.GH_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SETTINGS="$RUNNER_TEMP/gpr-settings.xml"
+          TOKEN="${GH_PACKAGES_TOKEN:-$GITHUB_TOKEN}"
           cat > "$SETTINGS" <<XML
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -41,7 +52,7 @@ jobs:
               <server>
                 <id>github</id>
                 <username>${GH_USERNAME}</username>
-                <password>${GH_TOKEN}</password>
+                <password>${TOKEN}</password>
               </server>
             </servers>
             <profiles>
@@ -89,6 +100,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Provide Maven settings into the build only if your Dockerfile uses it via BuildKit secrets
           secrets: |
             id=gpr,src=${{ env.GPR_SETTINGS }}
           build-args: |
