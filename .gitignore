@@ -34,7 +34,6 @@ build/
 
 ### IoT Mining ###
 out/
-./gpr-settings.xml
 # never commit local maven settings
 .mvn/settings.xml
 gpr-settings.xml
