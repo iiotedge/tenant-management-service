@@ -3,7 +3,7 @@ name: Build & Release TMS Image
 on:
   push:
     paths:
-      - 'microservices/tenant-management-service/**'
+      - '**'                         # or narrow down as needed
       - '.github/workflows/release-tms.yml'
   workflow_dispatch: {}
 
@@ -15,10 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write         # push to GHCR
-    defaults:
-      run:
-        working-directory: microservices/tenant-management-service
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -31,11 +28,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create gpr-settings.xml (temp)
-        # Prefer a PAT with read:packages (+ repo if private)
-        # If your org allows GITHUB_TOKEN to read packages, you can use that instead.
         env:
           GH_USERNAME: ${{ github.actor }}
-          GH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN != '' && secrets.GH_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           SETTINGS="$RUNNER_TEMP/gpr-settings.xml"
           cat > "$SETTINGS" <<XML
@@ -86,11 +81,11 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build & push (with secret + cache)
+      - name: Build & push
         uses: docker/build-push-action@v6
         with:
-          context: ./microservices/tenant-management-service
-          file: ./microservices/tenant-management-service/Dockerfile
+          context: .
+          file: ./Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -99,6 +94,6 @@ jobs:
           build-args: |
             SKIP_TESTS=true
             VCS_REF=${{ github.sha }}
-            BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_id }}
+            BUILD_DATE=${{ github.run_id }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
