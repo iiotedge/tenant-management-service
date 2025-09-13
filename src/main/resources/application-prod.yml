@@ -1,6 +1,6 @@
 spring:
   application:
-    name: tenant-management-service
+    name: IoTMining-Tenant-Management-Service
   datasource:
     driver-class-name: org.postgresql.Driver
     url: ${DB1_URL}
@@ -44,3 +44,6 @@ cors:
 
 jwt:
   secret: ${JWT_SECRET_KEY_BASE64}
+
+server:
+  port: 9061
