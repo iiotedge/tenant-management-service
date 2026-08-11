@@ -5,7 +5,12 @@ import com.iotmining.services.tms.dto.CreateTenantRequest;
 import com.iotmining.services.tms.dto.CreateTenantResponse;
 import com.iotmining.services.tms.dto.TenantSummaryResponse;
 import com.iotmining.services.tms.services.TenantService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,7 +30,7 @@ public class TenantController {
     // signup-time internal call (see JwtTokenProvider.issueInternalToken).
     @PostMapping
     @PreAuthorize("@tenantSecurity.isSuperAdmin() or hasAuthority('SCOPE_INTERNAL')")
-    public ResponseEntity<CreateTenantResponse> createTenant(@RequestBody CreateTenantRequest request) {
+    public ResponseEntity<CreateTenantResponse> createTenant(@Valid @RequestBody CreateTenantRequest request) {
         CreateTenantResponse response = tenantService.createTenant(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
@@ -49,11 +54,13 @@ public class TenantController {
         return ResponseEntity.notFound().build();
     }
 
-    // Platform-wide tenant listing - SUPER_ADMIN only.
+    // Platform-wide tenant listing - SUPER_ADMIN only. Paginated: an
+    // unbounded findAll() doesn't scale as the tenant count grows.
     @GetMapping
     @PreAuthorize("@tenantSecurity.isSuperAdmin()")
-    public ResponseEntity<List<TenantSummaryResponse>> getAllTenants() {
-        return ResponseEntity.ok(tenantService.getAllTenants());
+    public ResponseEntity<Page<TenantSummaryResponse>> getAllTenants(
+            @PageableDefault(size = 20, sort = "tenantName", direction = Sort.Direction.ASC) Pageable pageable) {
+        return ResponseEntity.ok(tenantService.getAllTenants(pageable));
     }
 
     @GetMapping("/children/{parentId}")

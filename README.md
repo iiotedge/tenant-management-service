@@ -11,9 +11,18 @@ Manages tenants (organizations/sub-tenants) and their hierarchy. Security
 | POST | `/api/v1/tenants` | SUPER_ADMIN, or `SCOPE_INTERNAL` (auth-service signup flow) |
 | DELETE | `/api/v1/tenants/internal/{tenantId}` | `SCOPE_INTERNAL` only - auth-service's compensating rollback if signup fails after tenant creation |
 | GET | `/api/v1/tenants/{tenantId}` | Members of that tenant |
-| GET | `/api/v1/tenants` | SUPER_ADMIN only - platform-wide listing |
+| GET | `/api/v1/tenants` | SUPER_ADMIN only - platform-wide listing, paginated (`?page=&size=&sort=`, defaults to 20/page sorted by name) |
 | GET | `/api/v1/tenants/children/{parentId}` | Members of the parent tenant |
-| GET | `/api/v1/tenants/{tenantId}/companies-with-users` | Members of that tenant |
+| GET | `/api/v1/tenants/{tenantId}/companies-with-users` | Members of that tenant - full descendant tree, one batched query per tree level |
+
+Errors follow `{"statusCode": ..., "error": "...", "message": "..."}` via
+`GlobalExceptionHandler`, mirroring auth-service's shape: 404 for a missing
+tenant, 409 for a hierarchy-rule violation, 400 for bean-validation
+failures, 403 for `@PreAuthorize` denials, 500 (generic, no stack trace)
+for anything unexpected.
+
+`/actuator/health`, `/actuator/info`, `/actuator/prometheus` are exposed,
+matching auth-service's observability setup.
 
 ## Configuration
 

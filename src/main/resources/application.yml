@@ -36,6 +36,16 @@ eureka:
     lease-renewal-interval-in-seconds: 10
     lease-expiration-duration-in-seconds: 30
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+      base-path: /actuator
+  endpoint:
+    prometheus:
+      access: unrestricted
+
 # Service References
 services:
   dms:
