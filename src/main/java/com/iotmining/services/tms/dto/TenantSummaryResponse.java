@@ -1,7 +1,8 @@
 package com.iotmining.services.tms.dto;
 
-import com.iotmining.services.tms.enums.TenantAccessLevel;
-import com.iotmining.services.tms.enums.TenantType;
+
+import com.iotmining.common.data.tenant.TenantAccessLevel;
+import com.iotmining.common.data.tenant.TenantType;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;

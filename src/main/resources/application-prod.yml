@@ -1,37 +1,50 @@
 spring:
-  application:
-    name: IoTMining-Tenant-Management-Service
+  config:
+    activate:
+      on-profile: prod
+
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: ${DB1_URL}
-    username: ${DB1_USERNAME}
-    password: ${DB1_PASSWORD}
+    # Injected by iiotedge-cli.sh
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     hikari:
-      pool-name: TenantProdServicePool
-      maximum-pool-size: 10
-      minimum-idle: 5
+      pool-name: TenantServicePool-Prod
+      maximum-pool-size: 20
+      minimum-idle: 10
       idle-timeout: 30000
-      connection-timeout: 30000
+      connection-timeout: 2000
       max-lifetime: 1800000
+
   jpa:
     hibernate:
-      ddl-auto: update   # ⚠️ In production, consider "validate"
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
     database: postgresql
     database-platform: org.hibernate.dialect.PostgreSQLDialect
-  flyway:
-    enabled: true
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka-service:9092}
-  redis:
-    host: ${REDIS_HOST:redis}
-    port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD:}
-    timeout: ${REDIS_TIMEOUT:2000}
-    pool:
-      max-active: ${REDIS_POOL_MAX_ACTIVE:10}
-      max-idle: ${REDIS_POOL_MAX_IDLE:5}
-      min-idle: ${REDIS_POOL_MIN_IDLE:1}
-      max-wait: ${REDIS_POOL_MAX_WAIT:2000}
+
+  # NOTE: spring.redis.* is renamed to spring.data.redis.* here for
+  # currency with Boot 3.x (the old prefix is a hard deprecation), but this
+  # block is currently inert either way - this service has no
+  # spring-boot-starter-data-redis dependency and no RedisConfig/
+  # RedisConnectionFactory bean, so nothing binds these properties. Left in
+  # place (env-var-driven, so harmless) in case Redis is wired up later;
+  # not something to silently delete without confirming intent.
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: ${REDIS_TIMEOUT:2000}
+      lettuce:
+        pool:
+          max-active: ${REDIS_POOL_MAX_ACTIVE:10}
+          max-idle: ${REDIS_POOL_MAX_IDLE:5}
+          min-idle: ${REDIS_POOL_MIN_IDLE:1}
+          max-wait: ${REDIS_POOL_MAX_WAIT:2000}
 
 rate:
   limit:
@@ -39,11 +52,17 @@ rate:
     time-window-seconds: ${RATE_LIMIT_TIME_WINDOW:60}
     error-message: ${RATE_LIMIT_ERROR_MESSAGE:Too many requests. Please try again later.}
 
-cors:
-  allowed-origins: ${ALLOWED_CORS_ORIGINS:https://your-frontend.example.com}
+services:
+  dms:
+    url: ${DEVICE_MANAGEMENT_SERVICE_URL:http://localhost:9055}
 
+# Required - no fallback. The base application.yml has no default either
+# (see its comment); this must be set explicitly so prod never silently
+# validates tokens against a publicly-visible dev key.
 jwt:
   secret: ${JWT_SECRET_KEY_BASE64}
 
-server:
-  port: 9061
+# NOTE: CORS is intentionally not configured here - iiotedge-cli.sh's Nginx layer
+# already attaches iiotedge_cors.conf to this service's routes (/api/v1/tenants,
+# /api/v1/tenant). Adding a second CORS layer in Spring would risk duplicate
+# Access-Control-Allow-Origin headers, which browsers reject.

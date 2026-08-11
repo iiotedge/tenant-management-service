@@ -37,3 +37,6 @@ out/
 # never commit local maven settings
 .mvn/settings.xml
 gpr-settings.xml
+
+### OS ###
+.DS_Store

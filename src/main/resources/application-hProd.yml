@@ -1,12 +1,10 @@
 # ==========================================
 # 2. PROFILE: DEV (Localhost)
 # ==========================================
-server:
-  port: ${SERVER_PORT:8083} # Script uses 8083 for TMS (check services.csv)
 spring:
   config:
     activate:
-      on-profile: dev
+      on-profile: hProd
 
   datasource:
     driver-class-name: org.postgresql.Driver
@@ -20,14 +18,10 @@ spring:
       idle-timeout: 30000
       connection-timeout: 2000
       max-lifetime: 1800000
-  jpa:
-    hibernate:
-#      ddl-auto: create-drop
-      ddl-auto: update
-    database: postgresql
 
-# Local-dev-only fallback so this still boots without setting the env var -
-# same key as auth-service's dev secret, never used outside local testing.
+# Same local-only fallback as application-dev.yml - this profile still uses
+# hardcoded local DB credentials above, so it's a dev/staging box, not a
+# hardened prod target; keeping the two consistent.
 jwt:
   secret: ${JWT_SECRET_KEY_BASE64:Vlo2vcFdiXGgWqZLEpLw6kk99sH8/4odgC2XgZV0IbA=}
 
