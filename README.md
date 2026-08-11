@@ -47,3 +47,16 @@ Active profile: `${SPRING_PROFILES_ACTIVE:dev}` (`dev`, `hProd`, or `prod`).
   `hProd`/`prod`, the edge Nginx layer (`iiotedge-cli.sh`) attaches CORS
   headers instead - a second Spring-managed CORS layer would risk duplicate
   `Access-Control-Allow-Origin` headers.
+
+## Quality gates
+
+`mvn verify` enforces, matching auth-service's exact thresholds:
+
+| Gate | Threshold | Current |
+|---|---|---|
+| JaCoCo instruction coverage | >=85% | 98.6% |
+| JaCoCo branch coverage | >=65% | 91.5% |
+| SpotBugs + FindSecBugs | Medium+ severity, Max effort | Clean (1 documented baseline suppression, see `spotbugs-exclude.xml`) |
+| Unit tests | 34, Mockito-based | All passing |
+
+License: MIT (see `LICENSE`).

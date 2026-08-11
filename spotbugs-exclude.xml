@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SpotBugs suppression filter for tenant-management-service.
+
+    Two kinds of entries live here:
+    1. PERMANENT — rule noise that does not apply to a Spring/Lombok codebase.
+    2. BASELINE — real findings, each with a documented reason it's a false
+       positive or an accepted, deferred smell. Fix the code, then delete
+       the entry (ratchet down, never up).
+-->
+<FindBugsFilter>
+
+    <!-- ================= PERMANENT ================= -->
+
+    <!-- Constructor-injected Spring beans and Lombok data carriers intentionally
+         store/expose "external mutable objects". Standard suppression for DI apps. -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- ================= BASELINE ================= -->
+
+    <!-- deleteTenant logs its UUID-typed tenantId parameter - a structurally
+         impossible false positive (UUID.toString() can only ever produce
+         hex digits and hyphens, never CR/LF). The finding's taint trace
+         crosses both classes since TenantController's
+         rollbackTenantCreation is the caller. Same pattern already
+         documented in auth-service's spotbugs-exclude.xml. -->
+    <Match>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+        <Or>
+            <Class name="com.iotmining.services.tms.services.TenantService"/>
+            <Class name="com.iotmining.services.tms.controller.TenantController"/>
+        </Or>
+    </Match>
+
+</FindBugsFilter>

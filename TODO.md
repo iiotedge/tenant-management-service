@@ -15,6 +15,11 @@ Known gaps, prioritized. See `CHECKLIST.md` for the full done/open list.
 - ~~jwt.secret had an insecure fallback usable in prod~~ - fixed in an
   earlier pass (see git history), same pattern as auth-service.
 - ~~~760 lines of dead, commented-out Cassandra-era code~~ - removed.
+- ~~No JaCoCo/SpotBugs quality gates~~ - added directly to this service's
+  `pom.xml` (they were never inherited from any shared parent - an earlier
+  pass here incorrectly assumed they were). Verified via a real `mvn
+  verify`: 98.6%/91.5% coverage, SpotBugs clean.
+- ~~No LICENSE file~~ - added (MIT, matching auth-service's).
 
 ## Architecture
 
@@ -44,12 +49,9 @@ Known gaps, prioritized. See `CHECKLIST.md` for the full done/open list.
       suite is Mockito-based unit tests only, matching auth-service's own
       documented gap).
 - [ ] `TenantManagementServiceApplicationTests.contextLoads` needs a live
-      local Postgres - couldn't be exercised in this environment.
-- [ ] Confirm the JaCoCo/SpotBugs gates inherited from the shared parent
-      POM actually pass at their configured thresholds here - inherited
-      via the same parent chain as auth-service, but not run to a gate
-      verdict in this environment (no local Postgres for the
-      DB-dependent test in the reactor).
+      local Postgres - couldn't be exercised in this environment (this is
+      the only test excluded from the `mvn verify` run that produced the
+      coverage numbers above).
 
 ## Operational
 

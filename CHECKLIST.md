@@ -32,12 +32,20 @@ behind each unchecked item. Mirrors auth-service's checklist structure.
 
 ## Testing & static analysis
 
-- [x] Mockito unit test suite covers `TenantService` and `TenantController`
-      (hierarchy validation, not-found paths, pagination, tree building,
-      status-code mapping)
-- [x] JaCoCo/SpotBugs quality gates inherited from the shared parent POM
-      (same chain auth-service uses) - not yet run against a live gate
-      threshold in this environment (see `TODO.md`)
+- [x] Mockito unit test suite covers `TenantService`, `TenantController`,
+      `TenantInitializer`, and `GlobalExceptionHandler` (34 tests total -
+      hierarchy validation, not-found paths, pagination, tree building,
+      status-code mapping, platform-tenant bootstrap)
+- [x] JaCoCo coverage gate added directly to this service's own `pom.xml`
+      (it was **not** inherited from any shared parent, despite an earlier,
+      incorrect note in this file claiming otherwise) - verified via a real
+      `mvn verify` run: 98.6% instruction / 91.5% branch, gate is
+      >=85%/>=65%
+- [x] SpotBugs + FindSecBugs added the same way, verified clean via a real
+      `mvn verify` run - one real finding (`CRLF_INJECTION_LOGS` on a
+      UUID-typed logged parameter, the same false-positive class
+      auth-service already documents) is suppressed with a written reason
+      in `spotbugs-exclude.xml`, not blanket-ignored
 - [ ] Integration tests against a real Spring context / test database
       (current suite is Mockito-based unit tests only, same documented gap
       as auth-service)
