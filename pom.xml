@@ -122,6 +122,19 @@
 		<finalName>${project.artifactId}</finalName>
 		<plugins>
 			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<!-- Required for Spring Security's @PreAuthorize SpEL expressions
+						 (e.g. #parentId) to resolve method parameter names via reflection
+						 at runtime - without it, parameter names aren't retained in the
+						 compiled bytecode and expression evaluation fails at request time
+						 with "Failed to evaluate expression '...'" on every call, not just
+						 an edge case. -->
+					<parameters>true</parameters>
+				</configuration>
+			</plugin>
+			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<executions>

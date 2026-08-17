@@ -2,6 +2,7 @@ package com.iotmining.services.tms.configurations;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -20,7 +21,13 @@ import java.util.Collections;
 @Configuration
 public class CorsConfig {
 
+    // @Primary is required: Spring MVC's auto-registered
+    // mvcHandlerMappingIntrospector bean also implements CorsConfigurationSource,
+    // so without this, the shared SecurityAutoConfiguration's
+    // ObjectProvider<CorsConfigurationSource> finds two candidates and throws
+    // NoUniqueBeanDefinitionException instead of picking one.
     @Bean
+    @Primary
     @Profile("dev")
     public CorsConfigurationSource devCorsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
