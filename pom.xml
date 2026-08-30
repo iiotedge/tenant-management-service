@@ -4,16 +4,25 @@
 		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-<!--	<parent>-->
-<!--		<groupId>com.iotmining.build</groupId>-->
-<!--		<artifactId>iotmining-parent</artifactId>-->
-<!--		<version>2025.08.18</version>-->
-<!--		<relativePath/>-->
-<!--	</parent>-->
+	<!-- This was pointed at the local, in-monorepo microservices/pom.xml
+	     (no relativePath, so it defaults to ../pom.xml) - resolves fine for
+	     a local build inside the monorepo checkout, but a standalone CI
+	     checkout of just this repo has no such sibling file, so Maven falls
+	     back to fetching "com.iotmining:microservices:pom" from GitHub
+	     Packages instead - an artifact that was never published there,
+	     since it's purely a local convenience parent. That's the actual
+	     root cause of the CI build failing (independent of which
+	     Dockerfile variant or secret is used) - every other service on
+	     this platform already migrated to the real, published
+	     iiotedge-parent this session; this one had the target parent
+	     drafted in a comment below but the swap itself was never finished.
+	     The <repositories> block further down already points at the right
+	     GitHub Packages repo for this. -->
 	<parent>
-		<groupId>com.iotmining</groupId>
-		<artifactId>microservices</artifactId>
-		<version>0.0.1-SNAPSHOT</version>
+		<groupId>com.iiotedge.build</groupId>
+		<artifactId>iiotedge-parent</artifactId>
+		<version>2025.08.18</version>
+		<relativePath/>
 	</parent>
 
 
