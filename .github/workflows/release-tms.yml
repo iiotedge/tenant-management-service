@@ -50,8 +50,17 @@ jobs:
       # common/data's own <parent> is already the real, published
       # iiotedge-parent (not a local relativePath), so - unlike some
       # other services on this platform - no sibling checkout of the
-      # iiotedge/iiotedge repo is needed here, just this one module.
-      - name: "Checkout common (only the 'data' module is actually needed)"
+      # iiotedge/iiotedge repo is needed here, just these two modules.
+      #
+      # com.iiotedge:iiotedge-security-starter:1.0.0 was never actually a
+      # separately-published GitHub Packages artifact - it's this exact
+      # module (common/security has that same groupId/artifactId/version
+      # verbatim in its own pom.xml, and a <distributionManagement> that's
+      # never actually been used to `mvn deploy` it there yet). It just
+      # needs the same build-from-source treatment as data - confirmed via
+      # a real CI run that got past data cleanly and isolated this as the
+      # one remaining unresolved dependency.
+      - name: "Checkout common (only 'data' and 'security' are actually needed)"
         uses: actions/checkout@v4
         with:
           repository: iiotedge/common
@@ -89,8 +98,10 @@ jobs:
           XML
           echo "GPR_SETTINGS=$SETTINGS" >> "$GITHUB_ENV"
 
-      - name: Install shared module (common/data)
-        run: mvn -B -s "$GPR_SETTINGS" -f common/data/pom.xml install -DskipTests
+      - name: Install shared modules (common/data, common/security)
+        run: |
+          mvn -B -s "$GPR_SETTINGS" -f common/data/pom.xml install -DskipTests
+          mvn -B -s "$GPR_SETTINGS" -f common/security/pom.xml install -DskipTests
 
       - name: Build & verify tenant-management-service
         run: mvn -B -s "$GPR_SETTINGS" -f tenant-management-service/pom.xml clean package -DskipTests
