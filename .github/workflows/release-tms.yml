@@ -13,7 +13,12 @@ on:
   workflow_dispatch: {}
 
 env:
-  IMAGE_NAME: ghcr.io/iotmining/tenant-management-service
+  # Was ghcr.io/iotmining/... - the org's own GitHub name moved to
+  # iiotedge (confirmed via git push redirects on several other repos
+  # this session); every other image on this platform already publishes
+  # under ghcr.io/iiotedge/*, and this repo's own token/permissions are
+  # scoped to iiotedge/tenant-management-service, not the old org name.
+  IMAGE_NAME: ghcr.io/iiotedge/tenant-management-service
   JAVA_VERSION: '21'
 
 concurrency:
@@ -63,7 +68,7 @@ jobs:
                 <repositories>
                   <repository>
                     <id>github</id>
-                    <url>https://maven.pkg.github.com/iotmining/platform-build</url>
+                    <url>https://maven.pkg.github.com/iiotedge/platform-build</url>
                     <releases><enabled>true</enabled></releases>
                     <snapshots><enabled>true</enabled></snapshots>
                   </repository>
@@ -108,7 +113,16 @@ jobs:
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          secrets: |
+          # GPR_SETTINGS is a file PATH (written above via
+          # $RUNNER_TEMP/gpr-settings.xml), not the settings.xml content
+          # itself - "secrets:" passes its value as literal inline text,
+          # so the secret Maven saw was literally the path string
+          # ("/home/runner/.../gpr-settings.xml"), not XML, which failed
+          # to parse ("only whitespace content allowed before start tag
+          # and not /"). secret-files: is the action's actual input for
+          # file-based secrets - found via a real CI failure while
+          # testing this service.
+          secret-files: |
             gpr=${{ env.GPR_SETTINGS }}
           build-args: |
             SKIP_TESTS=true
