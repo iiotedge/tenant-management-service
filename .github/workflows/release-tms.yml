@@ -1,5 +1,28 @@
 name: CI/CD • TMS
 
+# Two jobs: build the jar with a real Maven build (installing the one
+# `common` module this service actually needs first), then package that
+# already-built jar into the plain, distroless Dockerfile - the same
+# pre-built-jar pattern every other working service on this platform
+# uses. Previously did an in-container Maven build via Dockerfile.workflow,
+# which can never work for this service: it only has access to this
+# repo's own files (COPY . .), but tenant-management-service depends on
+# com.iotmining.common:data, which only exists as source in the separate
+# `common` repo (never published as a package) - there was no way for an
+# isolated, single-repo Docker build to see it. That's genuinely
+# unrelated to credentials/secrets - fixed those first (see this file's
+# git history) and still hit this as the real, remaining blocker.
+#
+# REQUIRES the org-level secret PLATFORM_REPO_TOKEN (a classic PAT - fine-
+# grained PATs don't support the GitHub Packages Maven registry) with
+# read:packages on iiotedge/platform-build. (GITHUB_TOKEN, provided
+# automatically, is used for GHCR push.)
+#
+# Known remaining blocker, independent of anything in this file:
+# com.iiotedge:iiotedge-security-starter:1.0.0 isn't published anywhere
+# (checked both GitHub Packages and Maven Central) - this workflow will
+# still fail at the "Build & verify" step until that's published.
+
 on:
   push:
     branches: [ main ]
@@ -13,11 +36,6 @@ on:
   workflow_dispatch: {}
 
 env:
-  # Was ghcr.io/iotmining/... - the org's own GitHub name moved to
-  # iiotedge (confirmed via git push redirects on several other repos
-  # this session); every other image on this platform already publishes
-  # under ghcr.io/iiotedge/*, and this repo's own token/permissions are
-  # scoped to iiotedge/tenant-management-service, not the old org name.
   IMAGE_NAME: ghcr.io/iiotedge/tenant-management-service
   JAVA_VERSION: '21'
 
@@ -25,67 +43,87 @@ concurrency:
   group: tms-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  packages: write
-  security-events: write
-
 jobs:
-  build-and-push:
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout source
+      # common/data's own <parent> is already the real, published
+      # iiotedge-parent (not a local relativePath), so - unlike some
+      # other services on this platform - no sibling checkout of the
+      # iiotedge/iiotedge repo is needed here, just this one module.
+      - name: "Checkout common (only the 'data' module is actually needed)"
         uses: actions/checkout@v4
+        with:
+          repository: iiotedge/common
+          token: ${{ secrets.PLATFORM_REPO_TOKEN }}
+          path: common
 
-      - name: Set up Java ${{ env.JAVA_VERSION }}
+      - name: Checkout tenant-management-service
+        uses: actions/checkout@v4
+        with:
+          path: tenant-management-service
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
-      - name: Prepare GitHub Packages settings.xml
+      - name: Write GitHub Packages settings.xml
         env:
-          GH_USERNAME: ${{ github.actor }}
-          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.PLATFORM_REPO_TOKEN }}
         run: |
           SETTINGS="$RUNNER_TEMP/gpr-settings.xml"
-          TOKEN="${GH_PACKAGES_TOKEN:-$GITHUB_TOKEN}"
           cat > "$SETTINGS" <<XML
-          <settings>
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
             <servers>
               <server>
                 <id>github</id>
-                <username>${GH_USERNAME}</username>
-                <password>${TOKEN}</password>
+                <username>${GH_ACTOR}</username>
+                <password>${GH_TOKEN}</password>
               </server>
             </servers>
-            <profiles>
-              <profile>
-                <id>github-packages</id>
-                <repositories>
-                  <repository>
-                    <id>github</id>
-                    <url>https://maven.pkg.github.com/iiotedge/platform-build</url>
-                    <releases><enabled>true</enabled></releases>
-                    <snapshots><enabled>true</enabled></snapshots>
-                  </repository>
-                </repositories>
-              </profile>
-            </profiles>
-            <activeProfiles>
-              <activeProfile>github-packages</activeProfile>
-            </activeProfiles>
           </settings>
           XML
           echo "GPR_SETTINGS=$SETTINGS" >> "$GITHUB_ENV"
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - name: Install shared module (common/data)
+        run: mvn -B -s "$GPR_SETTINGS" -f common/data/pom.xml install -DskipTests
+
+      - name: Build & verify tenant-management-service
+        run: mvn -B -s "$GPR_SETTINGS" -f tenant-management-service/pom.xml clean package -DskipTests
+
+      - name: Upload built jar
+        uses: actions/upload-artifact@v4
         with:
-          driver: docker-container
+          name: tenant-management-service-jar
+          path: tenant-management-service/target/tenant-management-service.jar
+          retention-days: 7
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    steps:
+      - name: Checkout tenant-management-service (Dockerfile only - jar comes from the test job)
+        uses: actions/checkout@v4
+
+      - name: Record build timestamp
+        id: timestamp
+        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Download built jar
+        uses: actions/download-artifact@v4
+        with:
+          name: tenant-management-service-jar
+          path: target
+
+      - uses: docker/setup-buildx-action@v3
 
       - name: Docker metadata
         id: meta
@@ -97,36 +135,22 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Log in to GitHub Container Registry (GHCR)
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker Build & Push
+      - name: Build & push image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile.workflow
-          platforms: linux/amd64
-          push: ${{ github.ref == 'refs/heads/main' }}
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # GPR_SETTINGS is a file PATH (written above via
-          # $RUNNER_TEMP/gpr-settings.xml), not the settings.xml content
-          # itself - "secrets:" passes its value as literal inline text,
-          # so the secret Maven saw was literally the path string
-          # ("/home/runner/.../gpr-settings.xml"), not XML, which failed
-          # to parse ("only whitespace content allowed before start tag
-          # and not /"). secret-files: is the action's actual input for
-          # file-based secrets - found via a real CI failure while
-          # testing this service.
-          secret-files: |
-            gpr=${{ env.GPR_SETTINGS }}
           build-args: |
-            SKIP_TESTS=true
             VCS_REF=${{ github.sha }}
-            BUILD_DATE=${{ github.run_id }}
+            BUILD_DATE=${{ steps.timestamp.outputs.value }}
           cache-from: type=gha,scope=tms
           cache-to: type=gha,mode=max,scope=tms
