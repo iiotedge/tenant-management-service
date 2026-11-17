@@ -1,0 +1,20 @@
+-- 1. Drop existing checks to prevent conflicts
+ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_tenant_type_check;
+ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_access_level_check;
+
+-- 2. Add Constraint for TenantType
+ALTER TABLE tenants
+ADD CONSTRAINT tenants_tenant_type_check
+CHECK (tenant_type IN ('PLATFORM', 'ORGANIZATION', 'SUB_TENANT'));
+
+-- 3. Add Constraint for TenantAccessLevel
+ALTER TABLE tenants
+ADD CONSTRAINT tenants_access_level_check
+CHECK (access_level IN ('SUPER_ADMIN', 'TENANT_ADMIN', 'OPERATIONAL', 'READ_ONLY'));
+
+-- 4. (Optional) Data Cleanup
+-- If you have old rows with 'COMPANY' or 'USER', map them to the new types:
+UPDATE tenants SET tenant_type = 'ORGANIZATION' WHERE tenant_type = 'COMPANY';
+-- Update Access Levels
+UPDATE tenants SET access_level = 'SUPER_ADMIN' WHERE access_level = 'SUPER';
+UPDATE tenants SET access_level = 'TENANT_ADMIN' WHERE access_level = 'ADMIN';
